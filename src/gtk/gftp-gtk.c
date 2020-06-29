@@ -250,13 +250,14 @@ static void
 navi_up_directory(gftp_window_data * wdata)
 {
   char *directory;
-  if(!gtk_widget_is_focus(window1.listbox) && !gtk_widget_is_focus(window2.listbox))
+  if (!gtk_container_get_focus_child(GTK_CONTAINER(window1.container)) &&
+      !gtk_container_get_focus_child(GTK_CONTAINER(window2.container)) )
   {
      ftp_log (gftp_logging_error, NULL, _("Set the focus on a list window\n"));
      return;
   }
 
-  if(gtk_widget_is_focus(window1.listbox)) {
+  if (gtk_container_get_focus_child(GTK_CONTAINER(window1.container))) {
      wdata = &window1;
   } else {
      if (!GFTP_IS_CONNECTED (window2.request))
@@ -439,6 +440,7 @@ on_remote_gftp_gtk_refresh(void) {
   gftp_gtk_refresh(&window2);
 }
 // ===
+
 
 static GtkWidget *
 CreateMenus (GtkWidget * parent)
@@ -990,6 +992,21 @@ gftp_gtk_init_request (gftp_window_data * wdata)
 }
 
 
+GtkWidget *
+gftp_gtk_create_btn(GtkWidget *parent,char *GTK1img, char *GTK2img, int imgtype,char *tooltip)
+{
+  GtkWidget *btn = gtk_button_new ();
+  GtkWidget *tempwid;
+  tempwid = gtk_image_new_from_stock (GTK2img,imgtype);
+  gtk_widget_set_size_request (btn, 30, -1);
+  gtk_box_pack_start (GTK_BOX (parent), btn, FALSE, FALSE, 0);
+  gtk_container_add (GTK_CONTAINER (btn), tempwid);
+  if(tooltip && tooltip[0]) 
+     gtk_widget_set_tooltip_text(btn,tooltip);
+  return btn;
+}
+
+
 static GtkWidget *
 CreateFTPWindow (gftp_window_data * wdata)
 {
@@ -999,28 +1016,50 @@ CreateFTPWindow (gftp_window_data * wdata)
     {"application/x-rootwin-drop", 0, 1}
   };
   char tempstr[50], *startup_directory;
-  GtkWidget *box, *scroll_list, *parent;
+  GtkWidget *box, *scroll_list, *listtoolbar, *btnUp,*btnRefresh,*btnHome,*btnNewFolder;
   intptr_t listbox_file_height, colwidth;
   GtkWidget *combo_entry;
 
   wdata->request = gftp_request_new ();
   gftp_gtk_init_request (wdata);
 
-  parent = gtk_frame_new (NULL);
+  wdata->container = gtk_frame_new (NULL);
   
   gftp_lookup_global_option ("listbox_file_height", &listbox_file_height);
   g_snprintf (tempstr, sizeof (tempstr), "listbox_%s_width", wdata->prefix_col_str);
   gftp_lookup_global_option (tempstr, &colwidth);
-  gtk_widget_set_size_request (parent, colwidth, listbox_file_height);
+  gtk_widget_set_size_request (wdata->container, colwidth, listbox_file_height);
 
-  gtk_container_set_border_width (GTK_CONTAINER (parent), 5);
+  gtk_container_set_border_width (GTK_CONTAINER (wdata->container), 5);
 
   box = gtk_box_new (GTK_ORIENTATION_VERTICAL, 0);
+  listtoolbar = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 0);
+  gtk_widget_set_size_request (listtoolbar, -1, 30);
+
   gtk_container_set_border_width (GTK_CONTAINER (box), 5);
-  gtk_container_add (GTK_CONTAINER (parent), box);
+  gtk_container_add (GTK_CONTAINER (wdata->container), box);
+  gtk_box_pack_start (GTK_BOX (box), listtoolbar, FALSE, FALSE, 0);
 
   wdata->combo = gtk_combo_box_text_new_with_entry ();
-  gtk_box_pack_start (GTK_BOX (box), wdata->combo, FALSE, FALSE, 0);
+  gtk_box_pack_start (GTK_BOX (listtoolbar), wdata->combo, TRUE, TRUE, 0);
+
+  btnUp  =gftp_gtk_create_btn(listtoolbar,"",GTK_STOCK_GO_UP,
+                             GTK_ICON_SIZE_SMALL_TOOLBAR, _("Navigate up"));
+  btnHome=gftp_gtk_create_btn(listtoolbar,"",GTK_STOCK_HOME,
+                             GTK_ICON_SIZE_SMALL_TOOLBAR, _("Home"));
+  btnRefresh=gftp_gtk_create_btn(listtoolbar,"",GTK_STOCK_REFRESH,
+                             GTK_ICON_SIZE_SMALL_TOOLBAR,_("Refresh"));
+  btnNewFolder=gftp_gtk_create_btn(listtoolbar,"",GTK_STOCK_OPEN,
+                             GTK_ICON_SIZE_SMALL_TOOLBAR,_("New Folder"));
+
+  g_signal_connect (btnUp, "clicked", G_CALLBACK (navi_up_directory), (gpointer) wdata);
+  if (strcmp(wdata->prefix_col_str,"local") == 0) {
+    g_signal_connect (btnRefresh, "clicked", G_CALLBACK (on_local_gftp_gtk_refresh), NULL);
+    g_signal_connect (btnNewFolder, "clicked", G_CALLBACK (on_local_gftpui_mkdir_dialog), NULL);
+  } else {
+    g_signal_connect (btnRefresh, "clicked", G_CALLBACK (on_remote_gftp_gtk_refresh), NULL);
+    g_signal_connect (btnNewFolder, "clicked", G_CALLBACK (on_remote_gftpui_mkdir_dialog), NULL);
+  }
 
   combo_entry = GTK_WIDGET(gtk_bin_get_child(GTK_BIN(wdata->combo)));
   g_signal_connect (G_OBJECT(combo_entry), "key_press_event",
@@ -1070,7 +1109,7 @@ CreateFTPWindow (gftp_window_data * wdata)
                     G_CALLBACK (on_listbox_right_click_cb),
                     (gpointer) wdata);
 
-  return (parent);
+  return (wdata->container);
 }
 
 
